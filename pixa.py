@@ -3,12 +3,13 @@ import pandas as pd
 from dotenv import load_dotenv
 from openai import OpenAI
 
+# Konfiguriere API-Schlüssel und LLM-Modell
 load_dotenv()
-
 API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("API_KEY") or "sk-REPLACE_WITH_YOUR_KEY"
 PIXABAY_API_KEY = os.getenv("PIXABAY_API_KEY") or ""
 MODEL = "gpt-4o-mini"
 
+# Erlaubte Kategorien und Bildtypen bei Pixabay
 ALLOWED_PIXABAY_CATEGORIES = {
     "llm", "all", "backgrounds", "fashion", "nature", "science", "education", "feelings", "health", "people",
     "religion", "places", "animals", "industry", "computer", "food", "sports", "transportation",
@@ -16,34 +17,52 @@ ALLOWED_PIXABAY_CATEGORIES = {
 }
 ALLOWED_IMAGE_TYPES = {"all", "photo", "illustration", "vector"}
 
+# ====================================================
+# Prompt-Parameter
+# ====================================================
+
+# Systemnachricht für die Social-Post-Generierung
 SYSTEM = (
     "Du schreibst Social-Posts für die Hochschule Merseburg. Deine Posts sind seriös, gehen aber "
     "häufig viral. Antworte sachlich und ansprechend."
 )
+
+# Arbeitsaufforderung für die Social-Post-Generierung für jedes Titel-/Text-Paar
 ASK = (
     "Erzeuge JSON: {\"linkedin\": \"...\", \"instagram\": \"...\"}. "
     "LinkedIn: professionell, 600–900 Zeichen, 5–8 Hashtags. "
     "Instagram: freundlich mit passenden Emojis, 150–300 Wörter, 6–10 Hashtags am Ende."
 )
 
+# Systemnachricht für die Pixabay-Kategorienzuordnung
 CATEGORY_SYSTEM = (
     "Ordne eine News-Meldung einer einzigen Pixabay-Kategorie zu. Antworte NUR mit einem Wort aus der Liste."
 )
 
+# Arbeitsaufforderung für die Pixabay-Kategorienzuordnung anhand des News-Artikels
 CATEGORY_USER_TEMPLATE = (
     "Text: \n{body}\n\nErlaubte Kategorien: backgrounds, fashion, nature, science, education, feelings, health, people, "
     "religion, places, animals, industry, computer, food, sports, transportation, travel, buildings, business, music\n" 
     "Antwort:"
 )
 
+# Systemnachricht für die Erzeugung von Pixabay-Suchparametern
 QUERY_SYSTEM = (
     "Erzeuge ausschließlich prägnante englische Suchbegriffe für die Bildsuche (Pixabay). "
-    "Gib *1 kurzen und einfachen Begriff*"
-)
-QUERY_USER_TEMPLATE = (
-    "News-Titel: {title}\nNews-Text: {body}\n\nGib *1 kurzen und einfachen Suchbegriff* (Deutsch):"
+    "Gib *2-3 kurze und einfache Begriffe*"
 )
 
+# Arbeitsaufforderung für die Erzeugung von Pixabay-Suchparametern
+QUERY_USER_TEMPLATE = (
+    "News-Titel: {title}\nNews-Text: {body}\n\nGib *2-3 kurze und einfache Suchbegriffe* (Deutsch):"
+)
+
+# ====================================================
+# Funktionen für die Textgenerierung
+# ====================================================
+
+
+# Erzeuge Pixabay-Kategorie
 def llm_category_from_text(client: OpenAI, text: str) -> str:
     try:
         resp = client.chat.completions.create(
@@ -63,6 +82,7 @@ def llm_category_from_text(client: OpenAI, text: str) -> str:
         return ""
 
 
+# Erzeuge Pixabay-Suchwörter
 def llm_query_terms(client: OpenAI, title: str, text: str) -> str:
     try:
         resp = client.chat.completions.create(
@@ -80,6 +100,7 @@ def llm_query_terms(client: OpenAI, title: str, text: str) -> str:
         return title
 
 
+# Erzeuge Social Posts
 def generate_posts(rows: pd.DataFrame, category_mode: str) -> pd.DataFrame:
     if not API_KEY or API_KEY.startswith("sk-REPLACE"):
         raise SystemExit("Please set OPENAI_API_KEY (or API_KEY) or edit API_KEY in the script.")
@@ -118,6 +139,7 @@ def generate_posts(rows: pd.DataFrame, category_mode: str) -> pd.DataFrame:
     return pd.DataFrame(out)
 
 
+# Stelle Anfrage an Pixabay
 def pixabay_search_images(query: str, category: str, image_type: str, lang: str = "de", per_page: int = 3) -> list:
     if not PIXABAY_API_KEY:
         return []
@@ -144,6 +166,7 @@ def pixabay_search_images(query: str, category: str, image_type: str, lang: str 
         return []
 
 
+# Lade Pixabay-Bilder anhand der URL herunter
 def download_image(url: str, dest_path: pathlib.Path) -> bool:
     try:
         with requests.get(url, stream=True, timeout=30) as r:
@@ -158,6 +181,7 @@ def download_image(url: str, dest_path: pathlib.Path) -> bool:
         return False
 
 
+# Starte Bildersuche und Bilddownload
 def search_and_download_images(df: pd.DataFrame, images_out: str, image_type: str, num_images: int = 10, lang: str = "de") -> pd.DataFrame:
     num_images = max(1, min(int(num_images), 10))
     images_dir = pathlib.Path(images_out)
